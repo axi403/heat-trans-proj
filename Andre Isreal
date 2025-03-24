@@ -1,0 +1,85 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+class Finite_diff_solver:
+    def __init__(self, Nx, Ny, Lx, Ly, tol=1e-4, max_iters=10000, omega=1.5):
+        self.Nx, self.Ny = Nx, Ny # Number of grid points in x and y direction
+        self.Lx, self.Ly = Lx, Ly # Dimensions of the domain
+        self.dx, self.dy = Lx / (Nx - 1), Ly / (Ny - 1) # Grid spacing
+        self.tol, self.max_iters, self.omega = tol, max_iters, omega # Convergence and relaxation factor
+        self.T = np.zeros((Nx, Ny)) # Temperature array
+        self.Node = np.zeros((Nx, Ny)) # Node array storing boundary conditions
+    
+    def set_boundary_condition(self, side, values, type="Dirichlet"):
+  # Set boundary conditions on each side
+    # Left side
+        if side == "left":
+            if type == "Dirichlet":
+                self.Node[0, :] = 1 # Dirichlet BC
+                self.T[0, :] = values # Temp values
+            elif type == "Neumann":
+                self.Node[0, :] = 2 # Neumann BC
+                self.T[1, :] = self.T[0, :] + values * self.dx # Neumann condition
+    # Right side
+        elif side == "right":
+            if type == "Dirichlet":
+                self.Node[-1, :] = 1
+                self.T[-1, :] = values
+            elif type == "Neumann":
+                self.Node[-1, :] = 2
+                self.T[-2, :] = self.T[-1, :] - values * self.dx
+    # Bottom side
+        elif side == "bottom":
+            if type == "Dirichlet":
+                self.Node[:, 0] = 1
+                self.T[:, 0] = values
+            elif type == "Neumann":
+                self.Node[:, 0] = 2
+                self.T[:, 1] = self.T[:, 0] + values * self.dy
+    # Top side
+        elif side == "top":
+            if type == "Dirichlet":
+                self.Node[:, -1] = 1
+                self.T[:, -1] = values
+            elif type == "Neumann":
+                self.Node[:, -1] = 2
+                self.T[:, -2] = self.T[:, -1] - values * self.dy
+    
+    def solve(self):
+        # Solves the finite difference problem using Gauss-Seidel with relaxation
+        max_diff = self.tol + 1 # Initialize max difference
+        iters = 0 # Iteration counter
+
+        # Iterates until it converges or it gets to max iterations
+        while max_diff > self.tol and iters < self.max_iters:
+            max_diff = 0
+            iters += 1
+            for i in range(1, self.Nx - 1):
+                for j in range(1, self.Ny - 1):
+                    if self.Node[i, j] == 0:  # Internal nodes only updated
+                        new_value = 0.25 * (self.T[i+1, j] + self.T[i-1, j] + self.T[i, j+1] + self.T[i, j-1])
+                        new_value = self.omega * new_value + (1 - self.omega) * self.T[i, j]
+                        max_diff = max(max_diff, abs(new_value - self.T[i, j]))
+                        self.T[i, j] = new_value
+
+#Finite difference method to approximate the solution
+#Each internal point is updated using the average of its four neighbors
+#The maximum difference is tracked for convergence
+
+        print(f"Converged in {iters} iterations")
+        return self.T
+    
+    def plot_solution(self):
+        #Plots computed solution
+        plt.imshow(self.T.T, origin='lower', extent=[0, self.Lx, 0, self.Ly], cmap='hot')
+        plt.colorbar()
+        plt.show()
+
+# Example usage
+solver = Finite_diff_solver(Nx=20, Ny=20, Lx=1, Ly=1)
+solver.set_boundary_condition("left", 100, "Dirichlet")
+solver.set_boundary_condition("right", 50, "Dirichlet")
+solver.set_boundary_condition("bottom", 0, "Dirichlet")
+solver.set_boundary_condition("top", 75, "Dirichlet")
+solution = solver.solve()
+solver.plot_solution()
