@@ -1,0 +1,100 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+def crank_nicolson_fin(N=101, M=15000, L=1.0, alpha=1e-5, dx=None, dt=None,
+                       T_init=1.0, T_base=0, T_inf_func=None, h=10, k=200,
+                       bc_tip='convective', T_tip_val=0.0, q_tip=0.0):
+
+    if dx is None:
+        dx = L / (N - 1)
+    if dt is None:
+        Fo = 0.5  # Fourier number
+        dt = Fo * dx**2 / alpha
+    Fo = alpha * dt / dx**2
+
+    x = np.linspace(0, L, N)
+    T_arr = np.zeros((N, M))
+    T_arr[-1, :] = T_init
+    T_arr[0, :] = T_base
+
+    # Construct matrices A and C
+    A=np.zeros((N,N))
+    np.fill_diagonal(A[1:-1,0:-2],Fo)
+    np.fill_diagonal(A[1:-1,1:-1], -2 - 2*Fo)
+    np.fill_diagonal(A[1:-1,2:],Fo)
+    A[0,0]=1 # Dirichlet BC
+    A[-1,-1]=1 # Dirichlet BC
+
+    # calc coeff matrix, C
+    C=np.zeros((N,N))
+    np.fill_diagonal(C[1:-1,0:-2], -Fo)
+    np.fill_diagonal(C[1:-1,1:-1],-2 + 2*Fo)
+    np.fill_diagonal(C[1:-1,2:],-Fo)
+    C[0,0]=1 #Dirichlet BC
+    C[-1,-1]=1 #Dirichlet BC
+    
+    # Boundary conditions at base
+    A[0, 0] = 1
+    C[0, 0] = 1
+
+    # Tip boundary condition
+    if bc_tip == 'specified':
+        A[-1, -1] = 1
+        C[-1, -1] = 1
+    elif bc_tip == 'flux':
+        A[-1, -2] = -1 / dx
+        A[-1, -1] = 1 / dx
+        C[-1, -2] = -1 / dx
+        C[-1, -1] = 1 / dx
+    elif bc_tip == 'convective':
+        m = h / k
+        A[-1, -2] = -2 * Fo
+        A[-1, -1] = 1 + 2 * Fo + 2 * dx * h / k
+        C[-1, -2] = 2 * Fo
+        C[-1, -1] = 1 - 2 * Fo - 2 * dx * h / k
+
+    for t in range(1, M):
+        T_prev = T_arr[:, t - 1].copy()
+        b = np.dot(C, T_prev)
+
+        if T_inf_func:
+            T_inf = T_inf_func(t * dt)
+        else:
+            T_inf = 0
+
+        if bc_tip == 'specified':
+            b[-1] = T_tip_val
+        elif bc_tip == 'flux':
+            b[-1] = q_tip / k
+        elif bc_tip == 'convective':
+            b[-1] += 2 * dx * h * T_inf / k
+
+        T_arr[:, t] = np.linalg.solve(A, b)
+
+    return x, T_arr, dt
+
+# Example time-varying ambient temperature
+def T_inf_time(t):
+    return 25 + 10 * np.sin(2 * np.pi * t / 1000)
+
+#Incropera & DeWitt Chapter 5 example
+#A straight rectangular fin, 5 cm long, is exposed to 100°C at the base and surrounded by air at 25°C with a convective coefficient of 25 W/m²·K. The fin has a thermal conductivity of 200 W/m·K and a cross-section of 1×1 mm².
+
+# Example run
+if __name__ == "__main__":
+    x, T_arr, dt = crank_nicolson_fin(
+        N=101, M=15000, alpha=1e-5, k=200, h=25,
+        T_init=0.0, T_base=100.0, T_inf_func=T_inf_time,
+        bc_tip='convective'
+    )
+
+    # Plotting
+    plt.figure(figsize=(6, 5))
+    for i in range(0, T_arr.shape[1], 1000):
+        plt.plot(x, T_arr[:, i], label=f"t={i*dt:.1f}s")
+    plt.xlabel("Fin length (m)")
+    plt.ylabel("Temperature (°C)")
+    plt.title("Transient Temperature in a Fin (Crank-Nicolson)")
+    plt.legend()
+    plt.grid()
+    plt.show()
